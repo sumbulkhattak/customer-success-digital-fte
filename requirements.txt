@@ -5,9 +5,10 @@ pydantic[email]==2.10.4
 python-dotenv==1.0.1
 httpx==0.28.1
 
-# OpenAI Agents SDK
+# OpenAI Agents SDK (works with Groq, Gemini via OpenAI-compatible API)
 openai-agents==0.0.7
 openai==1.59.5
+groq==0.13.0
 
 # Database
 asyncpg==0.30.0

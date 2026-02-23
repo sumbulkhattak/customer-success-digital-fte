@@ -268,26 +268,46 @@ class MockAgent:
 
 
 class AgentWrapper:
-    """Wrapper around the OpenAI Agents SDK Agent for consistent interface."""
+    """Wrapper around the OpenAI Agents SDK Agent for consistent interface.
+
+    Supports multiple AI providers via OpenAI-compatible API:
+    - OpenAI (default): gpt-4o
+    - Groq (free): llama-3.3-70b-versatile
+    - Google Gemini (free): gemini-2.0-flash
+    """
 
     def __init__(self):
-        """Initialize the real OpenAI Agent."""
+        """Initialize the Agent with the configured AI provider."""
         try:
             from agents import Agent, Runner, function_tool
+            import openai
+
+            # Configure OpenAI client for the chosen provider
+            base_url = settings.effective_base_url
+            model = settings.effective_model
+
+            if base_url:
+                # Set custom base URL for Groq/Gemini/other OpenAI-compatible providers
+                openai.base_url = base_url
+                logger.info("Using custom AI provider", base_url=base_url, model=model)
 
             # Wrap our tools with @function_tool
             wrapped_tools = [function_tool(tool) for tool in TOOLS]
 
             self._agent = Agent(
                 name="TechCorp Customer Success Agent",
-                model="gpt-4o",
+                model=model,
                 instructions=get_system_prompt("email"),  # Default, overridden per-run
                 tools=wrapped_tools,
             )
             self._runner = Runner
-            logger.info("OpenAI Agent initialized successfully")
+            logger.info(
+                "Agent initialized successfully",
+                provider=settings.AI_PROVIDER,
+                model=model,
+            )
         except Exception as e:
-            logger.error("Failed to initialize OpenAI Agent", error=str(e))
+            logger.error("Failed to initialize Agent", error=str(e))
             raise
 
     async def run(
@@ -339,10 +359,21 @@ class AgentWrapper:
 
 
 def get_agent():
-    """Factory function: returns real agent or mock based on config."""
+    """Factory function: returns real agent or mock based on config.
+
+    Supports free providers:
+    - Set AI_PROVIDER=groq + OPENAI_API_KEY=<groq-key> for free Groq
+    - Set AI_PROVIDER=gemini + OPENAI_API_KEY=<gemini-key> for free Gemini
+    - Set OPENAI_API_KEY=<openai-key> for OpenAI (paid)
+    - Leave OPENAI_API_KEY empty for MockAgent (no API needed)
+    """
     if settings.USE_MOCK_OPENAI:
-        logger.info("Using MockAgent (no OpenAI API key configured)")
+        logger.info("Using MockAgent (no API key configured)")
         return MockAgent()
     else:
-        logger.info("Using OpenAI Agents SDK Agent")
+        logger.info(
+            "Using Agent SDK",
+            provider=settings.AI_PROVIDER,
+            model=settings.effective_model,
+        )
         return AgentWrapper()

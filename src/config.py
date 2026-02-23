@@ -27,8 +27,11 @@ class Settings:
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
-    # OpenAI
+    # AI Provider (supports OpenAI, Groq, Google Gemini via OpenAI-compatible API)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_BASE_URL: str = os.getenv("OPENAI_BASE_URL", "")  # Custom base URL for Groq/Gemini
+    AI_MODEL: str = os.getenv("AI_MODEL", "gpt-4o")  # Model name (provider-specific)
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "openai")  # openai, groq, gemini
 
     # Kafka
     KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
@@ -51,6 +54,30 @@ class Settings:
     USE_MOCK_OPENAI: bool = not os.getenv("OPENAI_API_KEY", "")
     USE_MOCK_GMAIL: bool = not os.getenv("GMAIL_CREDENTIALS_PATH", "")
     USE_MOCK_TWILIO: bool = not os.getenv("TWILIO_ACCOUNT_SID", "")
+
+    @property
+    def effective_base_url(self) -> str:
+        """Get the effective base URL for the AI provider."""
+        if self.OPENAI_BASE_URL:
+            return self.OPENAI_BASE_URL
+        provider = self.AI_PROVIDER.lower()
+        if provider == "groq":
+            return "https://api.groq.com/openai/v1"
+        elif provider == "gemini":
+            return "https://generativelanguage.googleapis.com/v1beta/openai/"
+        return ""  # Default OpenAI
+
+    @property
+    def effective_model(self) -> str:
+        """Get the effective model name for the AI provider."""
+        if self.AI_MODEL != "gpt-4o":
+            return self.AI_MODEL  # User explicitly set a model
+        provider = self.AI_PROVIDER.lower()
+        if provider == "groq":
+            return "llama-3.3-70b-versatile"
+        elif provider == "gemini":
+            return "gemini-2.0-flash"
+        return self.AI_MODEL  # Default gpt-4o
 
 
 settings = Settings()

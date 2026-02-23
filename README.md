@@ -15,7 +15,9 @@ Customer Success Digital FTE is a fully autonomous AI support agent that replace
 
 **The problem:** Support teams are overwhelmed, response times are slow, and 24/7 coverage is expensive. This Digital FTE handles the repetitive 80% of tickets autonomously while escalating the complex 20% to human agents.
 
-**Key capabilities:** Omni-channel intake, AI response generation (GPT-4o), semantic knowledge search, automatic ticket creation and categorization, guardrailed escalation, and full mock mode for demos without API keys.
+**Key capabilities:** Omni-channel intake, AI response generation (Groq/Gemini/GPT-4o), semantic knowledge search, automatic ticket creation and categorization, guardrailed escalation, and full mock mode for demos without API keys.
+
+**All APIs are free.** See [SETUP_FREE_APIS.md](SETUP_FREE_APIS.md) for step-by-step setup (~15 min, $0 cost).
 
 ---
 
