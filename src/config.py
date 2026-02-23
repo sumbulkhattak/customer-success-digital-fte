@@ -70,14 +70,14 @@ class Settings:
     @property
     def effective_model(self) -> str:
         """Get the effective model name for the AI provider."""
-        if self.AI_MODEL != "gpt-4o":
+        if self.AI_MODEL and self.AI_MODEL != "gpt-4o":
             return self.AI_MODEL  # User explicitly set a model
         provider = self.AI_PROVIDER.lower()
         if provider == "groq":
             return "llama-3.3-70b-versatile"
         elif provider == "gemini":
             return "gemini-2.0-flash"
-        return self.AI_MODEL  # Default gpt-4o
+        return "gpt-4o"  # Default OpenAI model
 
 
 settings = Settings()

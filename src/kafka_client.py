@@ -273,8 +273,11 @@ class InMemoryEventBus:
 # ---------------------------------------------------------------------------
 
 
+_event_bus_instance: Optional[InMemoryEventBus | FTEKafkaProducer] = None
+
+
 def get_event_bus() -> InMemoryEventBus | FTEKafkaProducer:
-    """Return the appropriate event-bus backend.
+    """Return the singleton event-bus backend.
 
     When ``settings.KAFKA_BOOTSTRAP_SERVERS`` is set to a non-default,
     reachable broker address **and** the environment is not ``development``,
@@ -282,6 +285,10 @@ def get_event_bus() -> InMemoryEventBus | FTEKafkaProducer:
     ``InMemoryEventBus`` is used so the application can still run without an
     external broker.
     """
+    global _event_bus_instance
+    if _event_bus_instance is not None:
+        return _event_bus_instance
+
     use_kafka = (
         settings.KAFKA_BOOTSTRAP_SERVERS
         and settings.KAFKA_BOOTSTRAP_SERVERS != "localhost:9092"
@@ -293,7 +300,9 @@ def get_event_bus() -> InMemoryEventBus | FTEKafkaProducer:
             "event_bus.using_kafka",
             bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
         )
-        return FTEKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
+        _event_bus_instance = FTEKafkaProducer(bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS)
+    else:
+        logger.info("event_bus.using_inmemory_fallback")
+        _event_bus_instance = InMemoryEventBus()
 
-    logger.info("event_bus.using_inmemory_fallback")
-    return InMemoryEventBus()
+    return _event_bus_instance

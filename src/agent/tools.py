@@ -163,7 +163,6 @@ async def escalate_to_human(
         }
 
         event_bus = get_event_bus()
-        await event_bus.start()
         await event_bus.publish(TOPICS["escalations"], escalation_event, key=conversation_id)
 
         logger.info("Escalation created", reason=reason, severity=severity, channel=channel)

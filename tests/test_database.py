@@ -11,13 +11,15 @@ class TestDatabaseQueries:
 
     @pytest.fixture
     def mock_pool(self):
-        """Create a mock database pool."""
-        pool = AsyncMock()
+        """Create a mock database pool with proper async context manager."""
+        pool = MagicMock()  # Regular mock so acquire() isn't a coroutine
         conn = AsyncMock()
 
-        # Mock async context manager
-        pool.acquire.return_value.__aenter__ = AsyncMock(return_value=conn)
-        pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+        # Set up acquire() to return an async context manager
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=conn)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        pool.acquire.return_value = cm
 
         return pool, conn
 
@@ -34,7 +36,7 @@ class TestDatabaseQueries:
             "created_at": datetime.utcnow(),
         }
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import create_customer
             result = await create_customer(name="Test User", email="test@example.com")
 
@@ -50,7 +52,7 @@ class TestDatabaseQueries:
             "email": "found@example.com",
         }
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import find_customer_by_email
             result = await find_customer_by_email("found@example.com")
 
@@ -62,7 +64,7 @@ class TestDatabaseQueries:
         pool, conn = mock_pool
         conn.fetchrow.return_value = None
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import find_customer_by_email
             result = await find_customer_by_email("missing@example.com")
 
@@ -82,7 +84,7 @@ class TestDatabaseQueries:
             "created_at": datetime.utcnow(),
         }
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import create_ticket
             result = await create_ticket(
                 conversation_id=uuid.uuid4(),
@@ -103,9 +105,9 @@ class TestDatabaseQueries:
             {"id": uuid.uuid4(), "title": "Getting Started", "content": "Welcome!", "category": "getting_started", "relevance": 0.95},
         ]
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import search_knowledge_base
-            results = await search_knowledge_base("getting started")
+            results = await search_knowledge_base("getting started guide")
 
         assert len(results) == 1
         assert results[0]["title"] == "Getting Started"
@@ -126,7 +128,7 @@ class TestDatabaseQueries:
             }
         ]
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import get_customer_history
             results = await get_customer_history(uuid.uuid4())
 
@@ -144,7 +146,7 @@ class TestDatabaseQueries:
             "recorded_at": datetime.utcnow(),
         }
 
-        with patch("src.database.queries.get_db_pool", return_value=pool):
+        with patch("src.database.queries.get_db_pool", new_callable=AsyncMock, return_value=pool):
             from src.database.queries import record_metric
             result = await record_metric("email", "response_time", 1.5)
 

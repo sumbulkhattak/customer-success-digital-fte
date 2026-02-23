@@ -50,10 +50,18 @@ class UnifiedMessageProcessor:
     async def _handle_message(self, topic: str, message: dict):
         """Handle an incoming message from any channel.
 
+        Only processes messages from the unified tickets_incoming topic
+        to avoid duplicate processing (channel-specific topics are for
+        future per-channel consumers).
+
         Args:
             topic: The Kafka topic the message came from
             message: The deserialized message data
         """
+        # Only process from the unified intake topic to avoid duplicates
+        if topic != TOPICS["tickets_incoming"]:
+            return
+
         start_time = time.time()
         channel = message.get("channel", "unknown")
 
@@ -97,15 +105,30 @@ class UnifiedMessageProcessor:
                 conversation_id=conversation_id,
             )
 
-            # Step 5: Deliver response via channel
-            if not agent_result.get("escalated", False):
+            # Step 5: Store agent response in database
+            response_text = agent_result.get("response", "")
+            if response_text:
+                await queries.create_message(
+                    conversation_id=conversation["id"],
+                    sender_type="agent",
+                    content=response_text,
+                    channel=channel,
+                    metadata={
+                        "category": agent_result.get("category", ""),
+                        "escalated": agent_result.get("escalated", False),
+                        "ticket_number": message.get("ticket_number", ""),
+                    },
+                )
+
+            # Step 6: Deliver response via channel
+            if not agent_result.get("escalated", False) and response_text:
                 await self._deliver_response(
                     channel=channel,
                     message_data=message,
-                    response=agent_result.get("response", ""),
+                    response=response_text,
                 )
 
-            # Step 6: Record metrics
+            # Step 7: Record metrics
             processing_time = time.time() - start_time
             await queries.record_metric(
                 channel=channel,
@@ -193,8 +216,19 @@ class UnifiedMessageProcessor:
                     await self._whatsapp_handler.send_message(to_number, response)
 
             elif channel == "web_form":
-                # Web form responses are stored in the database and retrieved via API
-                logger.info("Web form response stored (poll via /support/ticket endpoint)")
+                # Web form: send email notification to customer if email available
+                to_email = message_data.get("customer_email", "")
+                subject = message_data.get("subject", "Support Response")
+                if to_email:
+                    await self._gmail_handler.send_reply(
+                        thread_id="",
+                        to_email=to_email,
+                        subject=subject,
+                        body=response,
+                    )
+                    logger.info("Web form email response sent", to_email=to_email)
+                else:
+                    logger.info("Web form response stored (no email to send to)")
 
             logger.info("Response delivered", channel=channel)
         except Exception as e:

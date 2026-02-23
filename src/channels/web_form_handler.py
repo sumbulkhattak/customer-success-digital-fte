@@ -149,7 +149,6 @@ async def submit_support_form(submission: SupportFormSubmission):
         }
 
         event_bus = get_event_bus()
-        await event_bus.start()
         await event_bus.publish(TOPICS["webform_inbound"], event, key=str(conversation_id))
         await event_bus.publish(TOPICS["tickets_incoming"], event, key=str(conversation_id))
 

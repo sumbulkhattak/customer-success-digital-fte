@@ -267,8 +267,12 @@ class MockAgent:
         return response
 
 
-class AgentWrapper:
-    """Wrapper around the OpenAI Agents SDK Agent for consistent interface.
+class SmartAgent:
+    """Hybrid agent: code-driven workflow + LLM-generated responses.
+
+    Uses the same workflow as MockAgent (ticket creation, KB search, etc.)
+    but sends context to the Groq/OpenAI LLM to generate natural,
+    context-aware responses instead of using templates.
 
     Supports multiple AI providers via OpenAI-compatible API:
     - OpenAI (default): gpt-4o
@@ -276,39 +280,28 @@ class AgentWrapper:
     - Google Gemini (free): gemini-2.0-flash
     """
 
+    ESCALATION_KEYWORDS = MockAgent.ESCALATION_KEYWORDS
+    PROFANITY_INDICATORS = MockAgent.PROFANITY_INDICATORS
+    CATEGORY_KEYWORDS = MockAgent.CATEGORY_KEYWORDS
+
     def __init__(self):
-        """Initialize the Agent with the configured AI provider."""
-        try:
-            from agents import Agent, Runner, function_tool
-            import openai
+        """Initialize the LLM client for the configured AI provider."""
+        from openai import AsyncOpenAI
 
-            # Configure OpenAI client for the chosen provider
-            base_url = settings.effective_base_url
-            model = settings.effective_model
+        base_url = settings.effective_base_url
+        self._model = settings.effective_model
 
-            if base_url:
-                # Set custom base URL for Groq/Gemini/other OpenAI-compatible providers
-                openai.base_url = base_url
-                logger.info("Using custom AI provider", base_url=base_url, model=model)
+        client_kwargs = {"api_key": settings.OPENAI_API_KEY}
+        if base_url:
+            client_kwargs["base_url"] = base_url
 
-            # Wrap our tools with @function_tool
-            wrapped_tools = [function_tool(tool) for tool in TOOLS]
-
-            self._agent = Agent(
-                name="TechCorp Customer Success Agent",
-                model=model,
-                instructions=get_system_prompt("email"),  # Default, overridden per-run
-                tools=wrapped_tools,
-            )
-            self._runner = Runner
-            logger.info(
-                "Agent initialized successfully",
-                provider=settings.AI_PROVIDER,
-                model=model,
-            )
-        except Exception as e:
-            logger.error("Failed to initialize Agent", error=str(e))
-            raise
+        self._client = AsyncOpenAI(**client_kwargs)
+        logger.info(
+            "SmartAgent initialized",
+            provider=settings.AI_PROVIDER,
+            model=self._model,
+            base_url=base_url or "default",
+        )
 
     async def run(
         self,
@@ -318,48 +311,210 @@ class AgentWrapper:
         customer_id: str = None,
         conversation_id: str = None,
     ) -> dict:
-        """Process a customer message using the OpenAI Agent."""
+        """Process a customer message with code-driven workflow + LLM response."""
+        logger.info(
+            "SmartAgent processing message",
+            channel=channel,
+            message_length=len(message),
+        )
+
         if not customer_id:
             customer_id = str(uuid.uuid4())
         if not conversation_id:
             conversation_id = str(uuid.uuid4())
 
-        # Update agent instructions for this specific interaction
-        self._agent.instructions = get_system_prompt(channel, customer_name, conversation_id)
+        message_lower = message.lower()
 
-        context = {
-            "customer_id": customer_id,
-            "conversation_id": conversation_id,
-            "channel": channel,
-            "customer_name": customer_name,
-        }
-
-        try:
-            result = await self._runner.run(
-                self._agent,
-                input=message,
-                context=context,
+        # Check for escalation triggers
+        anger_score = sum(1 for word in self.PROFANITY_INDICATORS if word in message_lower)
+        if anger_score >= 2:
+            return await self._handle_escalation(
+                conversation_id, customer_id, channel, customer_name,
+                message, "Aggressive/upset customer detected", "P2"
             )
 
-            return {
-                "status": "completed",
-                "response": result.final_output,
-                "channel": channel,
-                "escalated": False,
-            }
+        for keyword in self.ESCALATION_KEYWORDS:
+            if keyword in message_lower:
+                reason = f"Escalation keyword detected: '{keyword}'"
+                severity = "P2" if keyword in ("lawsuit", "attorney", "legal action", "liability", "lawyer") else "P3"
+                return await self._handle_escalation(
+                    conversation_id, customer_id, channel, customer_name,
+                    message, reason, severity
+                )
+
+        # Detect category and priority
+        category = self._detect_category(message_lower)
+        priority = self._detect_priority(message_lower)
+
+        # Step 1: Create ticket
+        ticket_result = await create_ticket(
+            conversation_id=conversation_id,
+            customer_id=customer_id,
+            channel=channel,
+            subject=message[:100],
+            category=category,
+            priority=priority,
+        )
+        ticket_data = json.loads(ticket_result)
+        ticket_number = ticket_data.get("ticket_number", "N/A")
+
+        # Step 2: Get customer history
+        history = await get_customer_history(customer_id)
+
+        # Step 3: Search knowledge base
+        kb_results = await search_knowledge_base(message, limit=3)
+
+        # Step 4: Generate AI response using LLM
+        response_text = await self._generate_ai_response(
+            message=message,
+            channel=channel,
+            customer_name=customer_name,
+            ticket_number=ticket_number,
+            kb_results=kb_results,
+            history=history,
+            category=category,
+        )
+
+        # Step 5: Send response
+        await send_response(
+            conversation_id=conversation_id,
+            customer_id=customer_id,
+            channel=channel,
+            response=response_text,
+            customer_name=customer_name,
+            ticket_number=ticket_number,
+        )
+
+        return {
+            "status": "completed",
+            "ticket_number": ticket_number,
+            "category": category,
+            "escalated": False,
+            "response": response_text,
+            "channel": channel,
+        }
+
+    async def _generate_ai_response(
+        self,
+        message: str,
+        channel: str,
+        customer_name: str,
+        ticket_number: str,
+        kb_results: str,
+        history: str,
+        category: str,
+    ) -> str:
+        """Call the LLM to generate a natural, context-aware response."""
+        system_prompt = get_system_prompt(channel, customer_name, "")
+
+        user_prompt = (
+            f"Customer message: {message}\n\n"
+            f"Ticket number: {ticket_number}\n"
+            f"Category: {category}\n\n"
+            f"Knowledge base results:\n{kb_results}\n\n"
+            f"Customer history:\n{history}\n\n"
+            f"Generate a helpful, empathetic response for the customer. "
+            f"Include the ticket number {ticket_number} in your response. "
+            f"Base your answer on the knowledge base results above."
+        )
+
+        try:
+            completion = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=600,
+                temperature=0.7,
+            )
+            response = completion.choices[0].message.content
+            logger.info("LLM response generated", model=self._model, tokens=completion.usage.total_tokens)
+            return response
         except Exception as e:
-            logger.error("Agent run failed", error=str(e))
-            return {
-                "status": "error",
-                "response": "I'm sorry, I encountered an issue processing your request. A human agent will assist you.",
-                "channel": channel,
-                "escalated": True,
-                "error": str(e),
-            }
+            logger.error("LLM response generation failed", error=str(e))
+            # Fall back to template response
+            return self._fallback_response(message, kb_results, category, ticket_number, customer_name)
+
+    def _fallback_response(self, message, kb_results, category, ticket_number, customer_name):
+        """Template fallback if LLM call fails."""
+        return (
+            f"Hi {customer_name},\n\n"
+            f"Thank you for reaching out. I've created ticket {ticket_number} for your request.\n\n"
+            f"I've reviewed our documentation and our team will follow up with a detailed answer shortly.\n\n"
+            f"Best regards,\nTechCorp Support Team"
+        )
+
+    async def _handle_escalation(
+        self, conversation_id, customer_id, channel, customer_name, message, reason, severity
+    ) -> dict:
+        """Handle escalation flow."""
+        ticket_result = await create_ticket(
+            conversation_id=conversation_id,
+            customer_id=customer_id,
+            channel=channel,
+            subject=f"[ESCALATION] {message[:80]}",
+            category="escalation",
+            priority="high",
+        )
+        ticket_data = json.loads(ticket_result)
+        ticket_number = ticket_data.get("ticket_number", "N/A")
+
+        await escalate_to_human(
+            conversation_id=conversation_id,
+            customer_id=customer_id,
+            reason=reason,
+            severity=severity,
+            channel=channel,
+            context_summary=message[:500],
+        )
+
+        escalation_response = (
+            "I understand your concern and I want to make sure you get the best help possible. "
+            "I've escalated your request to our specialized team. "
+            "A human agent will be in touch with you shortly."
+        )
+        await send_response(
+            conversation_id=conversation_id,
+            customer_id=customer_id,
+            channel=channel,
+            response=escalation_response,
+            customer_name=customer_name,
+            ticket_number=ticket_number,
+        )
+
+        return {
+            "status": "escalated",
+            "ticket_number": ticket_number,
+            "reason": reason,
+            "severity": severity,
+            "escalated": True,
+            "response": escalation_response,
+            "channel": channel,
+        }
+
+    def _detect_category(self, message_lower: str) -> str:
+        """Detect ticket category from message content."""
+        scores = {}
+        for category, keywords in self.CATEGORY_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in message_lower)
+            if score > 0:
+                scores[category] = score
+        return max(scores, key=scores.get) if scores else "feature_question"
+
+    def _detect_priority(self, message_lower: str) -> str:
+        """Detect priority from message urgency indicators."""
+        urgent_words = ["urgent", "asap", "immediately", "emergency", "critical", "down", "blocked"]
+        high_words = ["important", "soon", "quickly", "broken"]
+        if any(w in message_lower for w in urgent_words):
+            return "urgent"
+        if any(w in message_lower for w in high_words):
+            return "high"
+        return "medium"
 
 
 def get_agent():
-    """Factory function: returns real agent or mock based on config.
+    """Factory function: returns SmartAgent (LLM) or MockAgent (template) based on config.
 
     Supports free providers:
     - Set AI_PROVIDER=groq + OPENAI_API_KEY=<groq-key> for free Groq
@@ -372,8 +527,8 @@ def get_agent():
         return MockAgent()
     else:
         logger.info(
-            "Using Agent SDK",
+            "Using SmartAgent",
             provider=settings.AI_PROVIDER,
             model=settings.effective_model,
         )
-        return AgentWrapper()
+        return SmartAgent()

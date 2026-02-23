@@ -161,29 +161,46 @@ async def get_ticket_by_id(ticket_id: str) -> Optional[dict]:
 
 
 async def search_knowledge_base(query: str, limit: int = 5) -> list[dict]:
-    """Search knowledge base. Uses text search (vector search when embeddings available)."""
+    """Search knowledge base using OR-based full-text search with ILIKE fallback."""
     pool = await get_db_pool()
     async with pool.acquire() as conn:
-        # Text-based search fallback (works without embeddings)
-        rows = await conn.fetch(
-            """SELECT id, title, content, category,
-                      ts_rank(to_tsvector('english', title || ' ' || content), plainto_tsquery('english', $1)) as relevance
-               FROM knowledge_base
-               WHERE to_tsvector('english', title || ' ' || content) @@ plainto_tsquery('english', $1)
-               ORDER BY relevance DESC
-               LIMIT $2""",
-            query, limit
-        )
-        if not rows:
-            # Fallback: ILIKE search
+        # Build OR-based tsquery from individual words for broader matching
+        stop_words = {"i", "a", "the", "is", "it", "to", "do", "my", "me", "we", "of",
+                       "in", "and", "or", "so", "can", "you", "how", "that", "this",
+                       "with", "for", "would", "like", "get", "be", "not"}
+        words = [w for w in query.lower().split() if w.isalpha() and w not in stop_words and len(w) > 2]
+        if words:
+            or_query = " | ".join(words[:8])  # Use up to 8 keywords with OR
             rows = await conn.fetch(
-                """SELECT id, title, content, category, 0.5 as relevance
+                """SELECT id, title, content, category,
+                          ts_rank(to_tsvector('english', title || ' ' || content),
+                                  to_tsquery('english', $1)) as relevance
                    FROM knowledge_base
-                   WHERE content ILIKE '%' || $1 || '%' OR title ILIKE '%' || $1 || '%'
+                   WHERE to_tsvector('english', title || ' ' || content) @@ to_tsquery('english', $1)
+                   ORDER BY relevance DESC
                    LIMIT $2""",
-                query, limit
+                or_query, limit
             )
-        return [dict(r) for r in rows]
+            if rows:
+                return [dict(r) for r in rows]
+
+        # Fallback: ILIKE search on individual keywords
+        if words:
+            conditions = " OR ".join(
+                [f"content ILIKE '%' || ${i+1} || '%' OR title ILIKE '%' || ${i+1} || '%'"
+                 for i in range(min(len(words), 5))]
+            )
+            search_words = words[:5]
+            rows = await conn.fetch(
+                f"""SELECT id, title, content, category, 0.5 as relevance
+                    FROM knowledge_base
+                    WHERE {conditions}
+                    LIMIT ${len(search_words)+1}""",
+                *search_words, limit
+            )
+            return [dict(r) for r in rows]
+
+        return []
 
 
 async def get_customer_history(customer_id: uuid.UUID, limit: int = 10) -> list[dict]:
