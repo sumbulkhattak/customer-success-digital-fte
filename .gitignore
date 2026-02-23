@@ -16,6 +16,9 @@ build/
 .env.local
 .env.production
 
+# Credentials / secrets
+credentials/
+
 # IDE
 .vscode/
 .idea/
