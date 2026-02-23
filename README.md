@@ -47,9 +47,9 @@ Customer Success Digital FTE is a fully autonomous AI support agent that replace
           +---------+---------+
           |                   |
     +-----+------+     +-----+------+
-    | OpenAI     |     | Mock       |
+    | Smart      |     | Mock       |
     | Agent      |     | Agent      |
-    | (GPT-4o)   |     | (Fallback) |
+    | (Groq LLM) |     | (Fallback) |
     +-----+------+     +-----+------+
           +---------+---------+
                     v
@@ -65,7 +65,7 @@ Customer Success Digital FTE is a fully autonomous AI support agent that replace
 | Layer            | Technology                        | Purpose                              |
 |------------------|-----------------------------------|--------------------------------------|
 | API Framework    | FastAPI 0.115                     | Webhook endpoints, REST API          |
-| AI Agent         | OpenAI Agents SDK 0.0.7 (GPT-4o) | Autonomous agent with tool use       |
+| AI Agent         | Groq LLM + OpenAI SDK             | Hybrid agent: code workflow + LLM    |
 | Database         | PostgreSQL 16 + pgvector          | CRM data, knowledge base, vectors   |
 | Event Streaming  | Apache Kafka (aiokafka)           | Async message pipeline               |
 | Email Channel    | Gmail API + Pub/Sub               | Inbound/outbound email               |
@@ -86,7 +86,7 @@ customer-success-fte/
 |-- src/
 |   |-- api/main.py                    # FastAPI app, webhooks, REST endpoints
 |   |-- agent/
-|   |   |-- customer_success_agent.py  # OpenAI Agent + MockAgent
+|   |   |-- customer_success_agent.py  # SmartAgent (LLM) + MockAgent
 |   |   |-- prompts.py                # System prompts per channel
 |   |   |-- tools.py                  # 5 @function_tool definitions
 |   |   +-- formatters.py             # Channel-specific response formatters
@@ -245,7 +245,7 @@ Every interaction follows a strict 5-step sequence:
 | `POSTGRES_DB`              | `fte_db`                 | Database name                           |
 | `POSTGRES_USER`            | `fte_user`               | Database user                           |
 | `POSTGRES_PASSWORD`        | `fte_password_dev`       | Database password                       |
-| `OPENAI_API_KEY`           | _(empty = mock mode)_    | OpenAI API key for GPT-4o              |
+| `OPENAI_API_KEY`           | _(empty = mock mode)_    | AI provider API key (Groq/Gemini/OpenAI)|
 | `KAFKA_BOOTSTRAP_SERVERS`  | `localhost:9092`         | Kafka broker address                    |
 | `GMAIL_CREDENTIALS_PATH`   | _(empty = mock mode)_    | Path to Gmail service account JSON      |
 | `GMAIL_PUBSUB_TOPIC`       | _(empty)_                | Google Pub/Sub topic for Gmail push     |

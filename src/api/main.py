@@ -1,15 +1,13 @@
 """FastAPI application - main entry point for the Customer Success Digital FTE."""
 
 import asyncio
-import json
 import uuid
 from datetime import datetime
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import structlog
 
 from src.config import settings

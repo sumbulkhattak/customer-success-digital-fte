@@ -11,10 +11,10 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - support-api.techcorp.com
+        - your-domain.example.com
       secretName: fte-tls
   rules:
-    - host: support-api.techcorp.com
+    - host: your-domain.example.com
       http:
         paths:
           - path: /

@@ -1,7 +1,5 @@
 """Web form channel handler with FastAPI router."""
 
-import json
-import uuid
 from typing import Optional
 from datetime import datetime
 

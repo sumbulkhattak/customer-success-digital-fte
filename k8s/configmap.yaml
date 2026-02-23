@@ -12,6 +12,6 @@ data:
   KAFKA_BOOTSTRAP_SERVERS: "kafka-service:9092"
   API_HOST: "0.0.0.0"
   API_PORT: "8000"
-  API_BASE_URL: "https://support.techcorp.com"
+  API_BASE_URL: "https://your-domain.example.com"  # Replace with your actual domain
   AI_PROVIDER: "groq"
   AI_MODEL: "llama-3.3-70b-versatile"
