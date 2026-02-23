@@ -184,7 +184,15 @@ async def whatsapp_webhook(request: Request):
         # Validate webhook signature (skip in mock mode)
         if not settings.USE_MOCK_TWILIO:
             signature = request.headers.get("X-Twilio-Signature", "")
-            url = str(request.url)
+            # Use forwarded URL (ngrok/proxy) or API_BASE_URL for signature validation
+            forwarded_proto = request.headers.get("X-Forwarded-Proto", "")
+            forwarded_host = request.headers.get("X-Forwarded-Host", "") or request.headers.get("Host", "")
+            if forwarded_proto and forwarded_host:
+                url = f"{forwarded_proto}://{forwarded_host}{request.url.path}"
+            elif settings.API_BASE_URL != "http://localhost:8000":
+                url = f"{settings.API_BASE_URL}{request.url.path}"
+            else:
+                url = str(request.url)
             if not _whatsapp_handler.validate_webhook(url, form_dict, signature):
                 raise HTTPException(status_code=403, detail="Invalid webhook signature")
 

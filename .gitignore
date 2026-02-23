@@ -43,3 +43,6 @@ pgdata/
 # Logs
 *.log
 logs/
+
+# Tools (ngrok binary)
+tools/

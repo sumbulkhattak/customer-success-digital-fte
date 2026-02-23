@@ -79,10 +79,15 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       AI_MODEL: ${AI_MODEL:-}
+      # Gmail - use container path
+      GMAIL_CREDENTIALS_PATH: /app/credentials/gmail_token.json
+      GMAIL_PUBSUB_TOPIC: ${GMAIL_PUBSUB_TOPIC:-}
       # Twilio - pass from host .env
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_WHATSAPP_NUMBER: ${TWILIO_WHATSAPP_NUMBER:-whatsapp:+14155238886}
+    volumes:
+      - ./credentials:/app/credentials:ro
     ports:
       - "8000:8000"
     restart: unless-stopped
