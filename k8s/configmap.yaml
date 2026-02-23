@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fte-config
+  namespace: customer-success-fte
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "fte_db"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-service:9092"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  API_BASE_URL: "https://support.techcorp.com"
