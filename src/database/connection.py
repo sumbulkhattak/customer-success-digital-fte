@@ -28,13 +28,25 @@ async def get_db_pool() -> asyncpg.Pool:
 
 
 async def init_db() -> None:
-    """Initialize database by running schema.sql."""
+    """Initialize database by running schema.sql.
+
+    Executes statements individually so pgvector failure doesn't block
+    the rest of the schema from being created.
+    """
     pool = await get_db_pool()
     schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
     with open(schema_path, "r") as f:
         schema_sql = f.read()
+
+    # Split into individual statements and execute each
+    statements = [s.strip() for s in schema_sql.split(";") if s.strip()]
     async with pool.acquire() as conn:
-        await conn.execute(schema_sql)
+        for stmt in statements:
+            try:
+                await conn.execute(stmt)
+            except Exception as e:
+                # Log but continue — pgvector extension may not be available
+                logger.warning("schema_statement_failed", error=str(e), statement=stmt[:80])
     logger.info("Database schema initialized")
 
 

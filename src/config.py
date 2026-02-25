@@ -1,9 +1,14 @@
 """Application configuration loaded from environment variables."""
 
 import os
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Parse DATABASE_URL if provided (Railway, Heroku, etc.)
+_database_url = os.getenv("DATABASE_URL", "")
+_parsed_db = urlparse(_database_url) if _database_url else None
 
 
 class Settings:
@@ -13,12 +18,12 @@ class Settings:
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
-    # PostgreSQL
-    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
-    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
-    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "fte_db")
-    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "fte_user")
-    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "fte_password_dev")
+    # PostgreSQL (DATABASE_URL takes precedence over individual vars)
+    POSTGRES_HOST: str = (_parsed_db.hostname if _parsed_db else None) or os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int = (_parsed_db.port if _parsed_db else None) or int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB: str = (_parsed_db.path.lstrip("/") if _parsed_db and _parsed_db.path else None) or os.getenv("POSTGRES_DB", "fte_db")
+    POSTGRES_USER: str = (_parsed_db.username if _parsed_db else None) or os.getenv("POSTGRES_USER", "fte_user")
+    POSTGRES_PASSWORD: str = (_parsed_db.password if _parsed_db else None) or os.getenv("POSTGRES_PASSWORD", "fte_password_dev")
 
     @property
     def database_url(self) -> str:
@@ -45,9 +50,9 @@ class Settings:
     TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
     TWILIO_WHATSAPP_NUMBER: str = os.getenv("TWILIO_WHATSAPP_NUMBER", "")
 
-    # API
+    # API (PORT is set by Railway; API_PORT is fallback)
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT: int = int(os.getenv("API_PORT", "8000"))
+    API_PORT: int = int(os.getenv("PORT", os.getenv("API_PORT", "8000")))
     API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000")
 
     # Feature flags (for mock mode)

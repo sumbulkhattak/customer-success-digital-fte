@@ -29,16 +29,17 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY src/ ./src/
 COPY context/ ./context/
+COPY start.sh ./start.sh
 
 # Create non-root user
 RUN useradd -m -r appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Health check
+# Health check (uses $PORT if set by platform)
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 EXPOSE 8000
 
-# Default command: run API server
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command: seed database then start API server
+CMD ["bash", "start.sh"]
